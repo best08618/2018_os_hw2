@@ -28,5 +28,7 @@ The goals from HW2 are
 3. enhance it to support multiple consumers
 4. enhance it to support multiple (concurrent) producers and consumers.
 
+Measure & compare of execution time for different # of threads
+
 Happy hacking
 Seehwan
