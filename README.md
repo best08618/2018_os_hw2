@@ -13,8 +13,8 @@ It consists of three threads: main thread for admin job
 	second thread serves as a producer: reads lines from a file, and put the line string on the shared buffer
 	third thread serves as a consumer:  get strings from the shared buffer, and print the line out on the screen
 
-Unfortunately, the code is not working because threads runs independently from others, 
-the result is that different threads access invalid memory, and have wrong value, and crash.
+Unfortunately, the code is not working because threads runs independently from others.
+the result is that different threads access invalid memory, and have wrong value, and crash or waiting for terminated thread infinitely.
 To make it working, you have to touch the code so that the threads have correct value.
 
 To have correct values in threads, you need to keep consistency for data touched by multiple threads.
