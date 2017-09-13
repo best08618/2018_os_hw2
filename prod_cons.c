@@ -18,7 +18,7 @@ void *producer(void *arg) {
 	FILE *rfile = so->rfile;
 	int i = 0;
 	char *line = NULL;
-	size_t len = NULL;
+	size_t len = 0;
 	ssize_t read = 0;
 
 	while (1) {
@@ -39,7 +39,7 @@ void *producer(void *arg) {
 		so->full = 1;
 	}
 	free(line);
-	printf("Prod_%x: %d lines\n", pthread_self(), i);
+	printf("Prod_%x: %d lines\n", (unsigned int)pthread_self(), i);
 	*ret = i;
 	pthread_exit(ret);
 }
@@ -57,7 +57,7 @@ void *consumer(void *arg) {
 			break;
 		}
 		len = strlen(line);
-		printf("Cons_%x: [%02d:%02d] %s", pthread_self(), i,
+		printf("Cons_%x: [%02d:%02d] %s", (unsigned int)pthread_self(), i,
 				so->linenum, line);
 		free(so->line);
 		i++;
