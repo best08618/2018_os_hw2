@@ -5,9 +5,9 @@
 #include <string.h>
 
 typedef struct sharedobject {
-  FILE *rfile;
-  int linenum;
-  char *line;
+	FILE *rfile;
+	int linenum;
+	char *line;
 	pthread_mutex_t lock;
 	int full;
 } so_t;
@@ -52,13 +52,15 @@ void *consumer(void *arg) {
 	char *line;
 
 	while (1) {
+		while (so->full == 0) {
+		}
 		line = so->line;
 		if (line == NULL) {
 			break;
 		}
 		len = strlen(line);
-		printf("Cons_%x: [%02d:%02d] %s", (unsigned int)pthread_self(), i,
-				so->linenum, line);
+		printf("Cons_%x: [%02d:%02d] %s",
+			(unsigned int)pthread_self(), i, so->linenum, line);
 		free(so->line);
 		i++;
 		so->full = 0;
@@ -78,6 +80,10 @@ int main (int argc, char *argv[])
 	int *ret;
 	int i;
 	FILE *rfile;
+	if (argc == 1) {
+		printf("usage: ./prod_cons <readfile> #Producer #Consumer\n");
+		exit (0);
+	}
 	so_t *share = malloc(sizeof(so_t));
 	memset(share, 0, sizeof(so_t));
 	rfile = fopen((char *) argv[1], "r");
@@ -89,12 +95,12 @@ int main (int argc, char *argv[])
 		Nprod = atoi(argv[2]);
 		if (Nprod > 100) Nprod = 100;
 		if (Nprod == 0) Nprod = 1;
-	}
+	} else Nprod = 1;
 	if (argv[3] != NULL) {
 		Ncons = atoi(argv[3]);
 		if (Ncons > 100) Ncons = 100;
 		if (Ncons == 0) Ncons = 1;
-	}
+	} else Ncons = 1;
 
 	share->rfile = rfile;
 	share->line = NULL;
