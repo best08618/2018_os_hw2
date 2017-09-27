@@ -22,11 +22,6 @@ void *producer(void *arg) {
 	ssize_t read = 0;
 
 	while (1) {
-		while (so->full == 1) {
-			if (feof(rfile) != 0) {
-				break;
-			}
-		}
 		read = getdelim(&line, &len, '\n', rfile);
 		if (read == -1) {
 			so->full = 1;
@@ -52,8 +47,6 @@ void *consumer(void *arg) {
 	char *line;
 
 	while (1) {
-		while (so->full == 0) {
-		}
 		line = so->line;
 		if (line == NULL) {
 			break;
