@@ -24,14 +24,15 @@ pthread_mutex_lock()/pthread_mutex_unlock are the functions for pthreads synchor
 For condition variable, you may need to look up functions such as pthread_cond_wait()/pthread_cond_signal().
 
 The goals from HW2 are 
-0. Make consumer to gather some statistics of the given text in the file. 
-Basically, count the number of each alphabet character in the line.
-char_stat.c can be a hint for gathering statistics.
-At the end of execution, you should print out the statistics of the entire text.
 
 1. correct the code for prod_cons.c so that it works with 1 producer and 1 consumer
 
 2. enhance it to support multiple consumers.
+
+3. Make consumer(s) to gather some statistics of the given text in the file. 
+Basically, count the number of each alphabet character in the line.
+char_stat.c can be a hint for gathering statistics.
+At the end of execution, you should print out the statistics of the entire text.
 
 To run a program, you may give filename to read and # of producers and # of consumers.
 In case of single producer, 2 consumers, reading 'sample file'; you may need to execute your program by
