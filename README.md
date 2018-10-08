@@ -1,5 +1,6 @@
 # OS hw2
 OS homework #2 : Multi-thread text analyzer
+Due date: Oct. 28th
 
 The second homework is about multi-thread programming with some synchronization.
 Thread is a unit of execution; a thread has execution context, 
