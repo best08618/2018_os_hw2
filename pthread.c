@@ -11,7 +11,7 @@ struct thread_info {
 	int			thread_num;
 	char *		argv_string;
 };
-
+int i = 100 ; 
 static void * thread_fn(void *arg)
 {
 	struct thread_info *tinfo = arg;
@@ -27,7 +27,18 @@ static void * thread_fn(void *arg)
 	}
 	for (p = uargv; *p != '\0'; p++)
 		*p = toupper(*p);
-
+	int j;
+	if(tinfo->thread_num == 1)
+		for(j=0;j<10000;j++)
+		{
+//			printf("i increase: %d",i);
+			i++;
+		}
+	else
+		for(j=0;j<10000;j++){
+//			printf(" i dcreadse: %d",i);
+			i--;
+		}
 	return uargv;
 }
 
@@ -105,6 +116,7 @@ int main(int argc, char * argv[])
 			   tinfo[tnum].thread_num, (char *) res);
 	   free(res);      /* Free memory allocated by thread */
    }
+	printf("I value : %d",i);
 
    free(tinfo);
    exit(EXIT_SUCCESS);
