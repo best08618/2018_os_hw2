@@ -7,6 +7,7 @@
 #include <ctype.h>
 
 int result;
+pthread_mutex_t lock;
 
 struct thread_info {
 	pthread_t 	thread_id;
@@ -41,7 +42,7 @@ static void * thread_fn(void *arg)
 			result -= 1;
 		}
 	}
-
+	pthread_mutex_unlock(&lock);
 	return uargv;
 }
 
@@ -81,6 +82,10 @@ int main(int argc, char * argv[])
 		perror("calloc");
 		exit(0);
 	}
+
+	result = 0x100;
+	printf("main thread before execution result : 0x%X\n", result);
+	pthread_mutex_init (&lock, NULL);
 
     for (tnum = 0; tnum < num_threads; tnum++) {
 		tinfo[tnum].thread_num = tnum + 1;
