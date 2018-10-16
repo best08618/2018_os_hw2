@@ -11,7 +11,11 @@ struct thread_info {
 	int			thread_num;
 	char *		argv_string;
 };
-int i = 100 ; 
+int i = 100 ;
+
+pthread_mutex_t lock;
+
+ 
 static void * thread_fn(void *arg)
 {
 	struct thread_info *tinfo = arg;
@@ -28,17 +32,22 @@ static void * thread_fn(void *arg)
 	for (p = uargv; *p != '\0'; p++)
 		*p = toupper(*p);
 	int j;
+	pthread_mutex_lock(&lock);
 	if(tinfo->thread_num == 1)
+	{
+	//	pthread_mutex_lock(&lock);
 		for(j=0;j<10000;j++)
 		{
 //			printf("i increase: %d",i);
 			i++;
 		}
+	}
 	else
 		for(j=0;j<10000;j++){
 //			printf(" i dcreadse: %d",i);
 			i--;
 		}
+	pthread_mutex_unlock(&lock);
 	return uargv;
 }
 
@@ -49,22 +58,23 @@ int main(int argc, char * argv[])
 	pthread_attr_t attr;
 	int stack_size;
 	void *res;
+	
+	pthread_mutex_init (&lock, NULL);
+	stack_size = -1;
+	while ((opt = getopt(argc, argv, "s:")) != -1) {
+		switch (opt) {
+			case 's':
+				stack_size = strtoul(optarg, NULL, 0);
+				break;
 
-   stack_size = -1;
-   while ((opt = getopt(argc, argv, "s:")) != -1) {
-	   switch (opt) {
-	   case 's':
-		   stack_size = strtoul(optarg, NULL, 0);
-		   break;
+			default:
+				fprintf(stderr, "Usage: %s [-s stack-size] arg...\n",
+						argv[0]);
+				exit(EXIT_FAILURE);
+		}
+	}
 
-	   default:
-		   fprintf(stderr, "Usage: %s [-s stack-size] arg...\n",
-				   argv[0]);
-		   exit(EXIT_FAILURE);
-	   }
-   }
-
-   num_threads = argc - optind;
+	num_threads = argc - optind;
 
 
 	s = pthread_attr_init(&attr);
@@ -79,31 +89,31 @@ int main(int argc, char * argv[])
 		exit(0);
 	}
 
-    for (tnum = 0; tnum < num_threads; tnum++) {
+	for (tnum = 0; tnum < num_threads; tnum++) {
 		tinfo[tnum].thread_num = tnum + 1;
 		tinfo[tnum].argv_string = argv[optind + tnum];
 
-	   /* The pthread_create() call stores the thread ID into
-		  corresponding element of tinfo[] */
+		/* The pthread_create() call stores the thread ID into
+		   corresponding element of tinfo[] */
 
 		s = pthread_create(&tinfo[tnum].thread_id, &attr,
-						  &thread_fn, &tinfo[tnum]);
+				&thread_fn, &tinfo[tnum]);
 		if (s != 0) {
 			perror("pthread_create");
 			exit(0);
 		}
-   }
+	}
 
-   /* Destroy the thread attributes object, since it is no
-	  longer needed */
+	/* Destroy the thread attributes object, since it is no
+	   longer needed */
 
-   s = pthread_attr_destroy(&attr);
-   if (s != 0) {
-	   perror("pthread_attr_destroy");
+	s = pthread_attr_destroy(&attr);
+	if (s != 0) {
+		perror("pthread_attr_destroy");
 		exit(0);
 	}
 
-   /* Now join with each thread, and display its returned value */
+	/* Now join with each thread, and display its returned value */
 
    for (tnum = 0; tnum < num_threads; tnum++) {
 	   s = pthread_join(tinfo[tnum].thread_id, &res);
