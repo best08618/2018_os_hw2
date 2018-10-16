@@ -8,7 +8,7 @@
 
 struct thread_info {
 	pthread_t 	thread_id;
-	int			thread_num;
+	int		thread_num;
 	char *		argv_string;
 };
 

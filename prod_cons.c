@@ -112,6 +112,7 @@ int main (int argc, char *argv[])
 		rc = pthread_join(prod[i], (void **) &ret);
 		printf("main: producer_%d joined with %d\n", i, *ret);
 	}
+
 	pthread_exit(NULL);
 	exit(0);
 }
