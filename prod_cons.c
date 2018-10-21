@@ -4,115 +4,171 @@
 #include <unistd.h>
 #include <string.h>
 
-typedef struct sharedobject {
+typedef struct sharedobject
+{
 	FILE *rfile;
 	int linenum;
 	char *line;
 	pthread_mutex_t lock;
-	int full;
+	pthread_cond_t cons_cond;
+	pthread_cond_t prod_cond;
+	int full; //-1 at the end
 } so_t;
 
-void *producer(void *arg) {
+void *producer(void *arg)
+{
 	so_t *so = arg;
+
 	int *ret = malloc(sizeof(int));
 	FILE *rfile = so->rfile;
-	int i = 0;
+	size_t len = 0, read = 0;
 	char *line = NULL;
-	size_t len = 0;
-	ssize_t read = 0;
 
-	while (1) {
-		read = getdelim(&line, &len, '\n', rfile);
-		if (read == -1) {
-			so->full = 1;
+	while (1)
+	{
+		pthread_mutex_lock(&so->lock);
+
+		while (so->full == 1) // while the buffer is full, wait
+			pthread_cond_wait(&so->prod_cond, &so->lock);
+
+		read = getline(&line, &len, rfile);
+
+		if(read == -1)
+		{
+			pthread_cond_signal(&so->prod_cond);
 			so->line = NULL;
-			break;
+			so->full = -1;
 		}
-		so->linenum = i;
-		so->line = strdup(line);      /* share the line */
-		i++;
-		so->full = 1;
+		else
+		{
+			if(line[read-1]=='\n')
+				line[read-1]='\0'; //deleting the line jump at the end
+			so->line = strdup(line);
+			so->full = 1;
+		}
+		so->linenum++;
+
+		pthread_cond_signal(&so->cons_cond);
+		pthread_mutex_unlock(&so->lock);
+
+		if (read == -1) // end of file
+			break;
 	}
-	free(line);
-	printf("Prod_%x: %d lines\n", (unsigned int)pthread_self(), i);
-	*ret = i;
-	pthread_exit(ret);
+
+	printf("a producer exits\n");	
+	pthread_exit(NULL);
 }
 
-void *consumer(void *arg) {
+void *consumer(void *arg)
+{
 	so_t *so = arg;
-	int *ret = malloc(sizeof(int));
-	int i = 0;
-	int len;
+	int *ret = 0;
 	char *line;
 
-	while (1) {
-		line = so->line;
-		if (line == NULL) {
+	while (1)
+	{
+		pthread_mutex_lock(&so->lock);
+
+		while (so->full == 0) // when the buffer is empty, then whait
+			pthread_cond_wait(&so->cons_cond, &so->lock);
+		
+		if (so->line != NULL)
+		{
+			line = so->line;
+
+			printf("\t%02d->%s\n", so->linenum, so->line);
+			so->full = 0;
+
+			pthread_cond_signal(&so->prod_cond);
+			pthread_mutex_unlock(&so->lock);
+		}
+		else 
+		{
+			pthread_cond_signal(&so->cons_cond);
+			pthread_mutex_unlock(&so->lock);
 			break;
 		}
-		len = strlen(line);
-		printf("Cons_%x: [%02d:%02d] %s",
-			(unsigned int)pthread_self(), i, so->linenum, line);
-		free(so->line);
-		i++;
-		so->full = 0;
 	}
-	printf("Cons: %d lines\n", i);
-	*ret = i;
-	pthread_exit(ret);
+	printf("a consumer exits\n");	
+	pthread_exit(NULL);
 }
 
-
-int main (int argc, char *argv[])
+#define MAX_PROD 50
+#define MAX_CONS 50
+int main(int argc, char *argv[])
 {
-	pthread_t prod[100];
-	pthread_t cons[100];
-	int Nprod, Ncons;
-	int rc;   long t;
+	pthread_t prod[MAX_PROD], cons[MAX_CONS];
+	int Nprod = 1, Ncons = 1;
 	int *ret;
+	long t;
 	int i;
 	FILE *rfile;
-	if (argc == 1) {
+
+	//empty call
+	if (argc == 1)
+	{
 		printf("usage: ./prod_cons <readfile> #Producer #Consumer\n");
-		exit (0);
+		exit(0);
 	}
+
 	so_t *share = malloc(sizeof(so_t));
 	memset(share, 0, sizeof(so_t));
-	rfile = fopen((char *) argv[1], "r");
-	if (rfile == NULL) {
+
+	//file path
+	rfile = fopen((char *)argv[1], "r");
+	if (rfile == NULL)
+	{
 		perror("rfile");
 		exit(0);
 	}
-	if (argv[2] != NULL) {
-		Nprod = atoi(argv[2]);
-		if (Nprod > 100) Nprod = 100;
-		if (Nprod == 0) Nprod = 1;
-	} else Nprod = 1;
-	if (argv[3] != NULL) {
-		Ncons = atoi(argv[3]);
-		if (Ncons > 100) Ncons = 100;
-		if (Ncons == 0) Ncons = 1;
-	} else Ncons = 1;
 
 	share->rfile = rfile;
 	share->line = NULL;
 	pthread_mutex_init(&share->lock, NULL);
-	for (i = 0 ; i < Nprod ; i++)
-		pthread_create(&prod[i], NULL, producer, share);
-	for (i = 0 ; i < Ncons ; i++)
-		pthread_create(&cons[i], NULL, consumer, share);
-	printf("main continuing\n");
 
-	for (i = 0 ; i < Ncons ; i++) {
-		rc = pthread_join(cons[i], (void **) &ret);
-		printf("main: consumer_%d joined with %d\n", i, *ret);
+	//producers
+	if (argv[2] != NULL)
+	{
+		Nprod = atoi(argv[2]);
+		if (Nprod > MAX_PROD)
+			Nprod = MAX_PROD;
+		if (Nprod <= 0)
+			Nprod = 1;
 	}
-	for (i = 0 ; i < Nprod ; i++) {
-		rc = pthread_join(prod[i], (void **) &ret);
-		printf("main: producer_%d joined with %d\n", i, *ret);
+	for (i = 0; i < Nprod; i++)
+		pthread_create(&prod[i], NULL, producer, share);
+
+	//consumers
+	if (argv[3] != NULL)
+	{
+		Ncons = atoi(argv[3]);
+		if (Ncons > MAX_CONS)
+			Ncons = MAX_CONS;
+		if (Ncons <= 0)
+			Ncons = 1;
 	}
+	for (i = 0; i < Ncons; i++)
+		pthread_create(&cons[i], NULL, consumer, share);
+
+	//joinig
+	for (i = 0; i < Ncons; i++)
+	{
+		pthread_join(cons[i], (void **)&ret);
+		//printf("main: consumer_%d joined with %d\n", i, *ret);
+		printf("main: consumer_%d left\n", i);
+	}
+	for (i = 0; i < Nprod; i++)
+	{
+		pthread_join(prod[i], (void **)&ret);
+		printf("main: producer_%d left\n", i);
+	}
+
 	pthread_exit(NULL);
+
 	exit(0);
 }
 
+/*
+to compile:
+gcc -pthread prod_cons.c
+*/
