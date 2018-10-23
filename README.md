@@ -40,6 +40,8 @@ To run a program, you may give filename to read and # of producers and # of cons
 In case of single producer, 2 consumers, reading 'sample file'; you may need to execute your program by
 ./prod_cons ./sample 1 2
 
+You can download some example input source code from the link: [https://mobile-os.dankook.ac.kr/data/FreeBSD9-orig.tar]
+
 Please make some document so that I can follow to build/compile and run the code.
 It would be better if the document includes some introduction and some important implementation details or your program structure.
 
