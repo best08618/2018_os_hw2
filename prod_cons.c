@@ -28,7 +28,7 @@ void *producer(void *arg) {
 		while(so->full == 1){ // when the buffer is full, then do not update 
 			pthread_cond_wait(&so->cond,&so->lock);
 		}
-		if (read == -1) { // emd pf fo;e 
+		if (read == -1) { // end of file 
 			so->full = 1;
 			so->line = NULL;
 			pthread_cond_signal(&so->cond);
