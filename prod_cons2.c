@@ -11,7 +11,8 @@ typedef struct sharedobject {
 	int rear;
 	int full;
 	pthread_mutex_t lock;
-	pthread_cond_t cond;
+	pthread_cond_t cond_cons;
+	pthread_cond_t cond_prod;
 } so_t;
 
 void *producer(void *arg) {
@@ -27,19 +28,17 @@ void *producer(void *arg) {
 		read = getdelim(&line, &len, '\n', rfile);
 		pthread_mutex_lock(&so->lock);
 		while(((so->front)%100) == ((so->rear+1)%100) ){ // when the buffer is full, then do not update 
-			printf("waiting");
-			pthread_cond_wait(&so->cond,&so->lock);
+			pthread_cond_wait(&so->cond_cons,&so->lock);
 		}
 		if (read == -1) { // end of file 
 			so->line[(++(so->rear))%100] = NULL;
-			so->full = 1;
-			pthread_cond_signal(&so->cond);
+			pthread_cond_signal(&so->cond_prod);
 			pthread_mutex_unlock(&so->lock); // unlock the thread
 			break;
 		}
 		so->line[(++(so->rear))%100] = strdup(line);      /* share the line */
 		i++;
-		pthread_cond_signal(&so->cond);
+		pthread_cond_signal(&so->cond_prod);
 		pthread_mutex_unlock(&so->lock);
 	}
 	printf("Prod_%x: %d lines\n", (unsigned int)pthread_self(), i);
@@ -57,18 +56,20 @@ void *consumer(void *arg) {
 	while (1) {
 		pthread_mutex_lock(&so->lock); // lock the thread
 		while(((so->front)%100) == ((so->rear)%100)){ //when the buffer is empty
-			pthread_cond_wait(&so->cond,&so->lock);
+			pthread_cond_wait(&so->cond_prod,&so->lock);
 		}
 		line = so->line[++(so->front) % 100];
 		if (line == NULL) {
-			pthread_cond_signal(&so->cond);
+			so->front = so->front - 1;
+			pthread_cond_signal(&so->cond_prod);
+			pthread_mutex_unlock(&so->lock);
 			break;
 		}
 		len = strlen(line);
 		printf("Cons_%x: [%02d:%02d] %s",
 			(unsigned int)pthread_self(), i, so->front, line);
 		i++;
-		pthread_cond_signal(&so->cond);
+		pthread_cond_signal(&so->cond_cons);
 		pthread_mutex_unlock(&so->lock);
 	}
 	printf("Cons: %d lines\n", i);
@@ -86,6 +87,7 @@ int main (int argc, char *argv[])
 	int *ret;
 	int i;
 	FILE *rfile;
+
 	if (argc == 1) {
 		printf("usage: ./prod_cons <readfile> #Producer #Consumer\n");
 		exit (0);
@@ -113,7 +115,8 @@ int main (int argc, char *argv[])
 	share->front= share->rear= 0;
 	share-> full = 0;
 	pthread_mutex_init(&share->lock, NULL);
-	pthread_cond_init(&share->cond, NULL);
+	pthread_cond_init(&share->cond_cons, NULL);
+	pthread_cond_init(&share->cond_prod,NULL);
 	for (i = 0 ; i < Nprod ; i++)
 		pthread_create(&prod[i], NULL, producer, share);
 	for (i = 0 ; i < Ncons ; i++)
@@ -122,7 +125,9 @@ int main (int argc, char *argv[])
 
 	for (i = 0 ; i < Ncons ; i++) {
 		rc = pthread_join(cons[i], (void **) &ret);
+		pthread_cond_broadcast(&share->cond_prod);
 		printf("main: consumer_%d joined with %d\n", i, *ret);
+		
 	}
 	for (i = 0 ; i < Nprod ; i++) {
 		rc = pthread_join(prod[i], (void **) &ret);
