@@ -6,9 +6,13 @@
 #include <unistd.h>
 #include <ctype.h>
 
+int result;
+pthread_mutex_t lock; // this is a big lock for synchoniz
+
+
 struct thread_info {
 	pthread_t 	thread_id;
-	int			thread_num;
+	int		thread_num;
 	char *		argv_string;
 };
 
@@ -17,7 +21,7 @@ static void * thread_fn(void *arg)
 	struct thread_info *tinfo = arg;
 	char *uargv, *p;
 
-	printf("Thread %d: top of stack near %p; argv_string=%s\n",
+	printf("Thread %d: top of stack near %p; argv_string = %s\n",
 	tinfo->thread_num, &p, tinfo->argv_string);
 
 	uargv = strdup(tinfo->argv_string);
@@ -28,7 +32,19 @@ static void * thread_fn(void *arg)
 	for (p = uargv; *p != '\0'; p++)
 		*p = toupper(*p);
 
-	return uargv;
+	// touching global variable!
+	pthread_mutex_lock(&lock);
+	for (int i =  0; i < 10000000; i++){
+	if(( tinfo -> thread_num %2)==0) {
+		result += 1;
+	}
+	else{
+		result -= 1;
+	}
+    }
+	pthread_mutex_unlock(&lock);	
+
+	return uargv;	
 }
 
 int main(int argc, char * argv[])
@@ -68,6 +84,12 @@ int main(int argc, char * argv[])
 		exit(0);
 	}
 
+	// global variable initialization
+	result = 0x100;
+	printf("main thread: before execution result : 0x%x\n", result);
+	pthread_mutex_init (&lock, NULL);
+
+
     for (tnum = 0; tnum < num_threads; tnum++) {
 		tinfo[tnum].thread_num = tnum + 1;
 		tinfo[tnum].argv_string = argv[optind + tnum];
@@ -105,6 +127,7 @@ int main(int argc, char * argv[])
 			   tinfo[tnum].thread_num, (char *) res);
 	   free(res);      /* Free memory allocated by thread */
    }
+	printf("main thread: after execution result 0x%x\n", result);
 
    free(tinfo);
    exit(EXIT_SUCCESS);
