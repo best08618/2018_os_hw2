@@ -31,7 +31,7 @@ void *producer(void *arg) {
 		if (read == -1) {
 			so->full = 1;
 			so->line = NULL;
-				pthread_cond_signal(&so->cond);
+				pthread_cond_broadcast(&so->cond);
 				pthread_mutex_unlock(&so->lock); // unlock the thread
 			break;
 		}
@@ -39,7 +39,7 @@ void *producer(void *arg) {
 		so->line = strdup(line);      /* share the line */
 		i++;
 		so->full = 1;
-		pthread_cond_signal(&so->cond);
+		pthread_cond_broadcast(&so->cond);
 		pthread_mutex_unlock(&so->lock);
 	}
 	free(line);
@@ -56,12 +56,17 @@ void *consumer(void *arg) {
 	char *line;
 
 	while (1) {
+		
 		pthread_mutex_lock(&so->lock); // lock the thread
+
 			while(so->full == 0 ){
 				pthread_cond_wait(&so->cond,&so->lock);
 			}
+
 		line = so->line;
 		if (line == NULL) {
+			pthread_cond_broadcast(&so->cond);
+			pthread_mutex_unlock(&so->lock);
 			break;
 		}
 		len = strlen(line);
@@ -70,10 +75,10 @@ void *consumer(void *arg) {
 		free(so->line);
 		i++;
 		so->full = 0;
-		pthread_cond_signal(&so->cond);
+		pthread_cond_broadcast(&so->cond);
 		pthread_mutex_unlock(&so->lock);
 	}
-	printf("Cons: %d lines\n", i);
+	printf("Cons_%x: %d lines\n",(unsigned int)pthread_self() , i);
 	*ret = i;
 	pthread_exit(ret);
 }
@@ -99,11 +104,13 @@ int main (int argc, char *argv[])
 		perror("rfile");
 		exit(0);
 	}
+
 	if (argv[2] != NULL) {
 		Nprod = atoi(argv[2]);
 		if (Nprod > 100) Nprod = 100;
 		if (Nprod == 0) Nprod = 1;
 	} else Nprod = 1;
+
 	if (argv[3] != NULL) {
 		Ncons = atoi(argv[3]);
 		if (Ncons > 100) Ncons = 100;
