@@ -10,6 +10,7 @@ typedef struct sharedobject {
 	char *line;
 	pthread_mutex_t lock;
 	int full;
+	pthread_cond_t cond;
 } so_t;
 
 void *producer(void *arg) {
@@ -23,15 +24,26 @@ void *producer(void *arg) {
 
 	while (1) {
 		read = getdelim(&line, &len, '\n', rfile);
-		if (read == -1) {
+		pthread_mutex_lock(&so->lock);
+		while(so->full == 1) //its filled by another line
+		{
+			pthread_cond_wait(&so->cond, &so->lock);
+		}
+
+
+		if (read == -1) {  //returns -1 on failure, didnt return data from reading line
 			so->full = 1;
 			so->line = NULL;
+			 pthread_cond_signal(&so->cond);
+			pthread_mutex_unlock(&so->lock);
 			break;
 		}
 		so->linenum = i;
 		so->line = strdup(line);      /* share the line */
 		i++;
 		so->full = 1;
+		pthread_cond_signal(&so->cond); //before unlocking, we send signal to another thread to wake it up
+		pthread_mutex_unlock(&so->lock);	// release the lock
 	}
 	free(line);
 	printf("Prod_%x: %d lines\n", (unsigned int)pthread_self(), i);
@@ -47,6 +59,11 @@ void *consumer(void *arg) {
 	char *line;
 
 	while (1) {
+		pthread_mutex_lock(&so->lock);
+		while(so->full ==0)
+		{
+			pthread_cond_wait(&so->cond, &so->lock);
+		}
 		line = so->line;
 		if (line == NULL) {
 			break;
@@ -57,6 +74,8 @@ void *consumer(void *arg) {
 		free(so->line);
 		i++;
 		so->full = 0;
+		pthread_cond_signal(&so->cond);
+		pthread_mutex_unlock(&so->lock);
 	}
 	printf("Cons: %d lines\n", i);
 	*ret = i;
@@ -77,31 +96,44 @@ int main (int argc, char *argv[])
 		printf("usage: ./prod_cons <readfile> #Producer #Consumer\n");
 		exit (0);
 	}
+
 	so_t *share = malloc(sizeof(so_t));
 	memset(share, 0, sizeof(so_t));
 	rfile = fopen((char *) argv[1], "r");
+
 	if (rfile == NULL) {
 		perror("rfile");
 		exit(0);
 	}
-	if (argv[2] != NULL) {
-		Nprod = atoi(argv[2]);
+
+	if (argv[2] != NULL) 
+	{
+		Nprod = atoi(argv[2]); //convert string into integer and get number of prod
 		if (Nprod > 100) Nprod = 100;
 		if (Nprod == 0) Nprod = 1;
-	} else Nprod = 1;
-	if (argv[3] != NULL) {
-		Ncons = atoi(argv[3]);
+	} 
+	else Nprod = 1; //dealing with only one producer
+
+
+	if (argv[3] != NULL) 
+	{
+		Ncons = atoi(argv[3]); //get number of cons
 		if (Ncons > 100) Ncons = 100;
 		if (Ncons == 0) Ncons = 1;
-	} else Ncons = 1;
+	} 
+	else Ncons = 1; //dealing with only one consumer
+
 
 	share->rfile = rfile;
 	share->line = NULL;
-	pthread_mutex_init(&share->lock, NULL);
+	pthread_mutex_init(&share->lock, NULL); //initializing lock
+
 	for (i = 0 ; i < Nprod ; i++)
 		pthread_create(&prod[i], NULL, producer, share);
+
 	for (i = 0 ; i < Ncons ; i++)
 		pthread_create(&cons[i], NULL, consumer, share);
+
 	printf("main continuing\n");
 
 	for (i = 0 ; i < Ncons ; i++) {

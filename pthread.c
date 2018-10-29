@@ -6,6 +6,9 @@
 #include <unistd.h>
 #include <ctype.h>
 
+int global;
+pthread_mutex_t lock;
+
 struct thread_info {
 	pthread_t 	thread_id;
 	int			thread_num;
@@ -28,6 +31,21 @@ static void * thread_fn(void *arg)
 	for (p = uargv; *p != '\0'; p++)
 		*p = toupper(*p);
 
+	pthread_mutex_lock(&lock);
+	
+	for(int i=0; i< 10000000; i++)
+	{
+		if(tinfo->thread_num%2 == 0)
+		{
+			global +=1;
+		}
+		else
+		{
+			global -=1;
+		}
+	}
+	pthread_mutex_unlock(&lock);
+
 	return uargv;
 }
 
@@ -38,6 +56,11 @@ int main(int argc, char * argv[])
 	pthread_attr_t attr;
 	int stack_size;
 	void *res;
+	global = 0x100;
+
+	pthread_mutex_init(&lock, NULL);
+	
+	printf("main thread before exe: %p\n", global);
 
    stack_size = -1;
    while ((opt = getopt(argc, argv, "s:")) != -1) {
@@ -77,6 +100,7 @@ int main(int argc, char * argv[])
 
 		s = pthread_create(&tinfo[tnum].thread_id, &attr,
 						  &thread_fn, &tinfo[tnum]);
+	
 		if (s != 0) {
 			perror("pthread_create");
 			exit(0);
@@ -85,6 +109,7 @@ int main(int argc, char * argv[])
 
    /* Destroy the thread attributes object, since it is no
 	  longer needed */
+
 
    s = pthread_attr_destroy(&attr);
    if (s != 0) {
@@ -105,6 +130,7 @@ int main(int argc, char * argv[])
 			   tinfo[tnum].thread_num, (char *) res);
 	   free(res);      /* Free memory allocated by thread */
    }
+	printf("main thread after exe: %p\n", global);
 
    free(tinfo);
    exit(EXIT_SUCCESS);
