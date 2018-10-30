@@ -50,9 +50,9 @@ operation:
 3. repeat until the end is reached
 4. add the statistics on the shared statistics
 
-## mehtods
+## methods
 ### main
-**entry of the program**
+**entry point of the program**
 
 operation:
 1. initialize the shared objects
