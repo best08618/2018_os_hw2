@@ -19,7 +19,7 @@ for the producers
 ### buffer
 for the producers and consumers
 * line;
-* `buffer` "next" for liknked list
+* `buffer`, "next" for linked list
 * `mutex` for synchronization
 * last; as a flag when the end of the buffer is 
 
@@ -37,26 +37,27 @@ to pass the shared objects to the funtions
 
 ## threads
 ### producer
-opertaion:
-1. reads line from the file
-2. creates a new buffer with the line
-4. puts that new buffer at the head of the buffer stream
+operation:
+1. read line from the file
+2. create a new buffer with the line
+4. put the new buffer at the head of the buffer stream
 5. repeat until no more lines are found
 
 ### consumer
 operation:
 1. get the buffer at the tail of the stream
-2. analize the line in the buffer
-3. repeat until it reaches the end
-4. then add the statistics on the shared statistcs
+2. analyze the line in the buffer
+3. repeat until the end is reached
+4. add the statistics on the shared statistics
 
 ## mehtods
 ### main
 **entry of the program**
+
 operation:
-1. inithialize the shared objects
-2. inithialize producer and consumer threads
-3. whait for the treads to finish
+1. initialize the shared objects
+2. initialize producer and consumer threads
+3. wait for the treads to finish
 4. print the statistics
 
 ### init_consumers
