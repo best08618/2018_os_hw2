@@ -11,14 +11,15 @@ typedef struct sharedobject
 	FILE *rfile;
 	int linenum;
 	char *line;
+	int rear;
+	int front;
 	int full;
-	int buffer;
-	pthread_cond_t checkEmpty;	//check how much empty space
-	pthread_cond_t checkBuffer;
+	char* buffer[BUFSIZE];
+	pthread_cond_t checkEmpty;	//for consumer
+	pthread_cond_t checkBuffer; //for producer
 	pthread_mutex_t lock; //control entry into buffer
 	//pthread_cond_t cond; 
 } so_t;
-
 
 
 void *producer(void *arg) 
@@ -30,33 +31,37 @@ void *producer(void *arg)
 	char *line = NULL;
 	size_t len = 0;
 	ssize_t read = 0;
-	so->buffer = 0;
+
+	so->front = so->rear = 0;
 
 	while (1) 
 	{
 		read = getdelim(&line, &len, '\n', rfile); //read line is stored in 'line'
 		pthread_mutex_lock(&so->lock);
-		while(so->buffer ==  BUFSIZE)
+
+		while((so->rear+1)%BUFSIZE == so->front) //when buffer is full
 		{
-			pthread_cond_wait(&so->checkEmpty, &so->lock); //producer have to access the buffer, block consumer
+			pthread_cond_wait(&so->checkBuffer, &so->lock); //producer cannot produce anymore
 		}
+		so->rear = so->rear+1;	
+	
 		if (read == -1) //no more data in the file 
 		{  
-			so->full = 1;
+			//so->full = 1;
 			so->line = NULL;
-			pthread_cond_signal(&so->checkBuffer);
+			pthread_cond_signal(&so->checkEmpty);
 			pthread_mutex_unlock(&so->lock);
 			break;
 		}
-
 		so->linenum = i;
 		so->line = strdup(line);      /* share the line */
+		so->buffer[so->rear] = so->line;
 		i++;
-		so->full = 1;
-		pthread_cond_signal(&so->checkBuffer); //before unlocking, we send signal to another thread to wake it up
+//		so->full = 1;
+		pthread_cond_signal(&so->checkEmpty); //before unlocking, we send signal to another thread to wake it up
 		pthread_mutex_unlock(&so->lock);	// release the lock
 	}
-	free(line);
+//	free(line);
 	printf("Prod_%x: %d lines\n", (unsigned int)pthread_self(), i);
 	*ret = i;
 	pthread_exit(ret);
@@ -68,26 +73,39 @@ void *consumer(void *arg) {
 	int i = 0;
 	int len;
 	char *line;
-
+	
 	while (1) {
 		pthread_mutex_lock(&so->lock);
-		while(so->buffer == 0)
+		while(so->buffer[so->rear] == so->buffer[so->front]) //empty buffer
 		{
-			pthread_cond_wait(&so->checkBuffer, &so->lock);
+			pthread_cond_wait(&so->checkEmpty, &so->lock); //consumer wait
+			if(so->full == 1 ) //when it reaches the end of file, end the thread
+				break;
 		}
+		if(so->full == 1)
+		{
+			pthread_cond_signal(&so->checkEmpty);
+            pthread_mutex_unlock(&so->lock);
+			break;
+		}
+		so->line = so->buffer[so->front +1];
+		so->front = so->front+1;
 		line = so->line;
-
+		
 		if (line == NULL)
 		{
+			so->full = 1;
+			pthread_cond_signal(&so->checkEmpty);
+			pthread_mutex_unlock(&so->lock);
 			break;
 		}
 		len = strlen(line);
 		printf("Cons_%x: [%02d:%02d] %s",
 			(unsigned int)pthread_self(), i, so->linenum, line);
-		free(so->line);
+//		free(so->line);
 		i++;
-		so->full = 0;
-		pthread_cond_signal(&so->checkEmpty);
+		//so->full = 0;
+		pthread_cond_signal(&so->checkBuffer);
 		pthread_mutex_unlock(&so->lock);
 	}
 	printf("Cons: %d lines\n", i);
@@ -147,6 +165,7 @@ int main (int argc, char *argv[])
 
 	share->rfile = rfile;
 	share->line = NULL;
+	share->full = 0;
 	pthread_mutex_init(&share->lock, NULL); //initializing lock
 	pthread_cond_init(&share->checkBuffer, NULL);
 	pthread_cond_init(&share->checkEmpty, NULL);
