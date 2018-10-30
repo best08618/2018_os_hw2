@@ -1,7 +1,7 @@
 # 2018_os_hw2:
 
-multithreading program
-This program runs producer and consumer threads that share a buffer stream.
+Multithreading program.
+This program runs producer and consumer threads that share a stream of buffers.
 
 ## n_prod_n_cons.c
 ### compiling
@@ -13,7 +13,7 @@ This program runs producer and consumer threads that share a buffer stream.
 `num_producer` and `num_Consumer` are optional.
 
 ### notes
-the consumer treads sleep for a few milisecons so that the others have a chance to lock the buffer too
+* the consumer treads sleep for a few milisecons so that the others have a chance to lock the buffer too.
 
 ## structures
 
