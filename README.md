@@ -1,6 +1,7 @@
 # 2018_os_hw2:
 
 Multithreading program.
+
 This program runs producer and consumer threads that share a stream of buffers.
 
 ## n_prod_n_cons.c
