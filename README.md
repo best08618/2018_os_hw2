@@ -70,4 +70,4 @@ fills the passed array with the indicated amount of threads
 returns a newly initialized complex object
 
 ### print_file_statistics
-it explins itself
+it explains itself
