@@ -3,32 +3,28 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include <time.h> //just for waiting
 
-//data base class???
 
-#define VALID_CHAR 128
-#define MAX_PROD 50
-#define MAX_CONS 50
+#define VALID_CHAR 94
+#define STARTING_CHAR 32
+#define MAX_PROD 30
+#define MAX_CONS 30
 
 #pragma region structures definitions
 
 	typedef struct file_acess
 	{
 		FILE *rfile;
-		int linenum;
-		char *line;
 		pthread_mutex_t lock;
 	}s_file_acess;
 
 	typedef struct buffer
 	{
-		int linenum;
 		char *line;
-		//struct buffer *next; //liknked list
+		struct buffer *next; //for liknked list
 		pthread_mutex_t lock;
-		pthread_cond_t cons_cond;
-		pthread_cond_t prod_cond;
-		int full; //-1 at the end
+		int last; //flag; at the end of the buffer
 	}s_buffer;
 
 	typedef struct stat
@@ -40,7 +36,8 @@
 	typedef struct complex_obj
 	{
 		struct file_acess *file_acess;
-		struct buffer *buffer;
+		struct buffer *bf_head;
+		struct buffer *bf_tail;
 		struct stat *stat;
 	}s_complex_obj;
 
@@ -56,112 +53,136 @@
 
 		struct complex_obj *co = args;
 		struct file_acess *fa = co->file_acess;
-		struct buffer *bf = co->buffer;
+		struct buffer *bf_new;
+		struct buffer *bf_tmp;
+		
+		//lines counter
+		int *ret = malloc(sizeof(int));
+		int i = 0;
 
 		size_t len = 0, read = 0;
-		int linenum = 0;
 		char *line = NULL;
 
 		while (1)
 		{
-
 			//file-read CS
 			pthread_mutex_lock(&fa->lock);
-			
 				read = getline(&line, &len, fa->rfile);
-				fa->linenum++;
-				linenum = fa->linenum;
-			
 			pthread_mutex_unlock(&fa->lock);
 
-			//buffer CS
-			pthread_mutex_lock(&bf->lock);
-		
-			while (bf->full == 1) // while the buffer is full, wait
-				pthread_cond_wait(&bf->prod_cond, &bf->lock);
+			//create new buffer
+			bf_new = malloc(sizeof(s_buffer));
+			memset(bf_new, 0, sizeof(s_buffer));
+			pthread_mutex_init(&bf_new->lock, NULL);
 
+			//fill that new buffer
 			if (read == -1) //end of file
 			{
-				pthread_cond_broadcast(&bf->prod_cond);
-				bf->line = NULL;
-				bf->full = -1;
+				bf_new->line = NULL;
+				bf_new->last = 1;
 			}
-			else 
+			else
 			{
-				if (line[read-1] == '\n'){	line[read-1] = '\0'; }//deleting the line jump at the end
-
-				bf->line = strdup(line); //share the line
-				bf->linenum = linenum;
-				bf->full = 1;
+				bf_new->line = strdup(line);
+				i++;
 			}
 
-			pthread_cond_signal(&bf->cons_cond);
-			pthread_mutex_unlock(&bf->lock);
+			//put that new buffer at the head
+			pthread_mutex_lock(&co->bf_head->lock);
+				bf_tmp = co->bf_head;
+				co->bf_head->next=bf_new;
+				co->bf_head=bf_new;
+			pthread_mutex_unlock(&bf_tmp->lock);
 
 			if (read == -1) // end of file
 				break;
 		}
 
 		//printf("a producer exits\n"); //control
-		pthread_exit(NULL);
+		*ret = i;
+		pthread_exit(ret);
 	}
 
 	void *consumer(void *args)
 	{
-		//printf("a consumer enters\n"); //control
+		unsigned char * ptc = (char *)pthread_self();
+		printf("%02x-%02x consumer enters\n", ptc[2], ptc[3]); //control
 
 		struct complex_obj *co = args;
-		struct buffer *bf = co->buffer;
-		struct stat *st = co->stat;
+		struct buffer *bf_read;
+		int *ret = malloc(sizeof(int));
 
 		char *line;
-		int count[VALID_CHAR];
+		int count[VALID_CHAR]; //local statistics
 		char c; //for iteration
+		int lines = 0;
 
-		//reading lines
+		struct timespec tm = { .tv_sec = 0, .tv_nsec = 30000000};
+
 		while (1)
 		{
-			pthread_mutex_lock(&bf->lock);
+			//geting the tail
+			while(1){
+				nanosleep(&tm, NULL);	/*	I made the tread whait a little
+										because if i did`nt, it was too fast
+										the others where not geting a chance
+										(this anoyed me for a while) */
 
-			while (bf->full == 0) // when the buffer is empty, then whait
-				pthread_cond_wait(&bf->cons_cond, &bf->lock);
+				pthread_mutex_lock(&co->bf_tail->lock);
 
-			if (bf->full == -1) //end of file
-			{
-				pthread_cond_signal(&bf->cons_cond);
-				pthread_mutex_unlock(&bf->lock);
-				break;
+				if(co->bf_tail->last == 1){
+					//it's last; use this buffer
+					bf_read = co->bf_tail;
+					pthread_mutex_unlock(&co->bf_tail->lock);
+					break; // continue with the buffer
+				}
+				else if(co->bf_tail->next != NULL) {
+					//we can continue; cut off the tail
+					bf_read = co->bf_tail;
+					co->bf_tail = co->bf_tail->next;
+					//unlocking it even though no one can access it anymore
+					pthread_mutex_unlock(&bf_read->lock);
+					break; // continue with the buffer
+				}
+				else
+					//misiging next buffer; ask again
+					pthread_mutex_unlock(&co->bf_tail->lock);
 			}
-
-			line = strdup(bf->line);
-			bf->full = 0;
-
-			//printf("[L:%02d] %s\n", bf->linenum, bf->line); //control
-
-			pthread_cond_signal(&bf->prod_cond);
-			pthread_mutex_unlock(&bf->lock);
 			
-			//iterating line to gather statistics
-			for(int i =0; ; i++){
-				c = line[i]; //identify current
-				if(c=='\0') break;
-				count[c]++; //count "one more" to wichever character that is
+			//analize the buffer
+			if (bf_read->last==1){
+				break; //stop reading lines 
 			}
+			else{
+				//gather statistics
+				line = strdup(bf_read->line);
+				for (int i = 0;; i++)
+				{
+					c = line[i];
+					if (c<STARTING_CHAR) break; //ignore non-redable ones
+					count[c-STARTING_CHAR]++; //count one more of "c"
+				}
+
+				lines++;
+			}
+
+			//printf("%s.\n", bf_read->line); //control
 		}
 
-		pthread_mutex_lock(&st->lock);
-			//iterating statistics's count and adding local count
+		//publishing; adding local-statistics to the shared-statistics
+		pthread_mutex_lock(&co->stat->lock);
 			for(int i=0; i<VALID_CHAR; i++){
-				st->count[i] += count[i];
+				co->stat->count[i] += count[i];
 			}
-		pthread_mutex_unlock(&st->lock);
+		pthread_mutex_unlock(&co->stat->lock);
 
 		//printf("a consumer exits\n"); //control
-		pthread_exit(NULL);
+
+		*ret = lines;
+		pthread_exit(ret);
 	}
 
 #pragma endregion
-
 
 
 
@@ -169,8 +190,7 @@
 
 	int init_producers(char *qty, pthread_t *prod, void *complex_obj)
 	{
-
-		int i = 0, limit = 1;
+		int i = 0, limit = 1; //limit =1 by default
 		if (qty != NULL)
 		{
 			
@@ -188,7 +208,7 @@
 			pthread_create(&prod[i], NULL, producer, complex_obj);
 		}
 
-		return(i); //how many treads where created, should be ecual to qty
+		return(i); //how many treads where created, should be equal to qty
 	}
 
 	int init_consumers(char *qty, pthread_t *cons, void *complex_obj)
@@ -210,7 +230,7 @@
 			pthread_create(&cons[i], NULL, consumer, complex_obj);
 		}
 
-		return(i); //how many treads where created, should be ecual to qty
+		return(i); //how many treads where created, should be equal to qty
 	}
 
 	struct complex_obj *create_cplx_obj()
@@ -226,29 +246,43 @@
 		//buffer
 		struct buffer *buffer = malloc(sizeof(struct buffer));
 		memset(buffer, 0, sizeof(struct buffer));
-		complex_obj->buffer = buffer;
+		buffer->line = "";
+		complex_obj->bf_head = buffer;
+		complex_obj->bf_tail = buffer;
 		//statistics
 		struct stat *statistics = malloc(sizeof(struct stat));
 		memset(statistics, 0, sizeof(struct stat));
 		complex_obj->stat = statistics;
 
+		
+		//locks for the treads
+		pthread_mutex_init(&file_acess->lock, NULL);
+		pthread_mutex_init(&buffer->lock, NULL);
+		pthread_mutex_init(&statistics->lock, NULL);
+
 		return complex_obj;
 	}
 
-	void print_file_statistics(int * stat_array)
+	void print_file_statistics(int lines, int * stat_array)
 	{
 
 		//header
 		printf("\n----------STATISTICS----------\n");
-		//printf("  lines-----nn\n");
-		//printf("  letters---nn\n");
-		printf("\n  character  ocurrences\n");
+		printf("  lines-------%d\n\n", lines);
+		//printf("  characters--nn\n");
+		printf("\n  character  ocurrences  dozens\n");
 
-		//
+		//data
 		for(int i=0; i<VALID_CHAR; i++){
-			if(stat_array[i] != 0)
-				printf("  [%3d:%c]         %02d\n", i, i, stat_array[i]);
+			int n = stat_array[i];
+			if(n != 0){
+				printf("   [%3d: %c]      %2d        ", i+STARTING_CHAR, i+STARTING_CHAR, n);
+				for (n /= 12; n>0 ;n--) printf("*");
+				printf("\n");
+			}
 		}
+
+		//footer
 		printf("<non-ocurring characters are omited>\n");
 		printf("\n----------STATISTICS----------\n\n");
 
@@ -260,6 +294,8 @@
 	{
 		pthread_t prod[MAX_PROD], cons[MAX_CONS];
 		struct complex_obj *co;
+		int *ret;
+		int lines = 0;
 
 		//empty call validation
 		if (argc == 1)
@@ -272,32 +308,28 @@
 		
 		//file path
 		FILE *rfile = fopen((char *)argv[1], "r");
-		if (rfile == NULL)
-		{
+		if (rfile == NULL) {
 			perror("rfile");
 			exit(0);
 		}
 		co->file_acess->rfile = rfile;
-		co->file_acess->line = NULL;
-		co->file_acess->linenum = 0;
-		co->buffer->linenum = 0;
 
-		//locks for the treads
-		pthread_mutex_init(&co->file_acess->lock, NULL);
-		pthread_mutex_init(&co->buffer->lock, NULL);
-		pthread_mutex_init(&co->stat->lock, NULL);
-
-		//acrual threads
+		//init and start threads
 		int prod_c = init_producers(argv[2], prod, co);
 		int cons_c = init_consumers(argv[3], cons, co);
-
-		void * ret;
+		
+		for (int i = 0 ; i < prod_c ; i++) {
+			pthread_join(prod[i], (void **) &ret);
+			lines += *ret;
+			//printf("main: producer %d re-joined after %d lines.\n", i+1, *ret); //control
+		} //control */
+		
 		for (int i = 0 ; i < cons_c ; i++) {
 			pthread_join(cons[i], (void **) &ret);
-			//printf("main: consumer %d re-joined main tread.\n", i); //control
-		}
+			//printf("main: consumer %d re-joined after %d lines.\n", i+1, *ret); //control
+		} //control */
 
-		print_file_statistics(co->stat->count);
+		print_file_statistics(lines, co->stat->count);
 
 		exit(0);
 	}
